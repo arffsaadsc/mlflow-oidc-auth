@@ -1,6 +1,6 @@
 from flask import Response, request
 from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
-from mlflow.protos.service_pb2 import CreateExperiment, DeleteScorer, RegisterScorer, SearchExperiments, SearchLoggedModels
+from mlflow.protos.service_pb2 import CreateExperiment, DeleteScorer, RegisterScorer, SearchExperiments, SearchLoggedModels, SearchRuns
 from mlflow.server.handlers import _get_model_registry_store, _get_request_message, _get_tracking_store, catch_mlflow_exception, get_endpoints
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
@@ -89,6 +89,47 @@ def _filter_search_experiments(resp: Response):
 
     resp.data = message_to_json(response_message)
 
+def _filter_search_runs(resp: Response):  
+    if get_fastapi_admin_status():  
+        return  
+  
+    response_message = SearchRuns.Response()  # type: ignore  
+    parse_dict(resp.json, response_message)  
+    request_message = _get_request_message(SearchRuns())  
+  
+    username = get_fastapi_username()  
+  
+    # Filter out unreadable runs from the current response page.  
+    for run in list(response_message.runs):  
+        if not can_read_experiment(run.info.experiment_id, username):  
+            response_message.runs.remove(run)  
+  
+    # Re-fetch to fill max_results, preserving MLflow pagination semantics.  
+    tracking_store = _get_tracking_store()  
+    while len(response_message.runs) < request_message.max_results and response_message.next_page_token != "":  
+        refetched = tracking_store.search_runs(  
+            experiment_ids=list(request_message.experiment_ids),  
+            filter_string=request_message.filter,  
+            run_view_type=request_message.run_view_type,  
+            max_results=request_message.max_results,  
+            order_by=request_message.order_by,  
+            page_token=response_message.next_page_token,  
+        )  
+  
+        remaining = request_message.max_results - len(response_message.runs)  
+        refetched = refetched[:remaining]  
+        if len(refetched) == 0:  
+            response_message.next_page_token = ""  
+            break  
+  
+        readable_proto = [r.to_proto() for r in refetched if can_read_experiment(r.info.experiment_id, username)]  
+        response_message.runs.extend(readable_proto)  
+  
+        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)  
+        final_offset = start_offset + len(refetched)  
+        response_message.next_page_token = SearchUtils.create_page_token(final_offset)  
+  
+    resp.data = message_to_json(response_message)
 
 def _filter_search_registered_models(resp: Response):
     if get_fastapi_admin_status():
@@ -236,6 +277,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     SearchExperiments: _filter_search_experiments,
     SearchLoggedModels: _filter_search_logged_models,
     SearchRegisteredModels: _filter_search_registered_models,
+    SearchRuns: _filter_search_runs,
     RenameRegisteredModel: _rename_registered_model_permission,
     RegisterScorer: _set_can_manage_scorer_permission,
     DeleteScorer: _delete_scorer_permissions_cascade,

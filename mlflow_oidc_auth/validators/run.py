@@ -53,3 +53,19 @@ def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
         if not effective_experiment_permission(experiment_id, username).permission.can_read:
             return False
     return True
+
+
+def validate_can_search_runs(username: str) -> bool:
+    """
+    Validate permission for SearchRuns requests.
+
+    This validator always returns True to allow the request to proceed.
+    The actual filtering of results is handled by the after_request hook
+    (_filter_search_runs), which removes runs from experiments the user
+    cannot access.
+
+    This approach provides a better user experience when searching across
+    multiple experiments where the user may only have access to a subset,
+    rather than rejecting the entire request if any experiment is inaccessible.
+    """
+    return True

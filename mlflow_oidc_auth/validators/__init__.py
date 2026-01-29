@@ -28,6 +28,7 @@ from mlflow_oidc_auth.validators.run import (
     validate_can_read_metric_history_bulk_interval,
     validate_can_update_run_artifact,
     validate_can_read_run_artifact,
+    validate_can_search_runs,
 )
 
 from mlflow_oidc_auth.validators.scorers import (
@@ -76,6 +77,7 @@ __all__ = [
     "validate_can_update_run",
     "validate_can_delete_run",
     "validate_can_read_metric_history_bulk_interval",
+    "validate_can_search_runs",
     "validate_can_read_traces_from_experiment_ids",
     "validate_can_read_trace",
     "validate_can_update_trace_from_experiment_id",

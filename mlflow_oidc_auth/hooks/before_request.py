@@ -45,6 +45,7 @@ from mlflow.protos.service_pb2 import (
     LogParam,
     RestoreExperiment,
     RestoreRun,
+    SearchRuns,
     SetExperimentTag,
     SetLoggedModelTags,
     SetTag,
@@ -82,7 +83,6 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_logged_model,
     validate_can_update_registered_model,
     validate_can_update_run,
-    validate_can_read_experiments_from_experiment_ids,
     validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
     validate_can_read_traces_from_experiment_ids,
@@ -104,6 +104,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_search_datasets,
     validate_can_create_promptlab_run,
     validate_gateway_proxy,
+    validate_can_search_runs,
 )
 
 
@@ -140,6 +141,7 @@ BEFORE_REQUEST_HANDLERS = {
     GetRun: validate_can_read_run,
     DeleteRun: validate_can_delete_run,
     RestoreRun: validate_can_delete_run,
+    SearchRuns: validate_can_search_runs,
     UpdateRun: validate_can_update_run,
     LogMetric: validate_can_update_run,
     LogBatch: validate_can_update_run,
