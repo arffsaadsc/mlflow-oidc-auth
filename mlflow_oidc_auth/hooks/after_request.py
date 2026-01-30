@@ -314,6 +314,7 @@ def after_request_hook(resp: Response):
     tid = getattr(g, 'trace_id', '????????')
     print(f">>> [{tid}] after_request_hook: path={request.path}, method={request.method}, status={resp.status_code}", file=sys.stderr, flush=True)
     if 400 <= resp.status_code < 600:
+        print(f">>> [{tid}] after_request_hook: error response body={resp.get_data(as_text=True)[:500]}", file=sys.stderr, flush=True)
         return resp
 
     handler = AFTER_REQUEST_HANDLERS.get((request.path, request.method))
