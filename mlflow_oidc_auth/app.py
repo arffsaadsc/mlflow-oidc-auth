@@ -102,6 +102,17 @@ def create_app() -> Any:
     app.before_request(before_request_hook)
     app.after_request(after_request_hook)
 
+    # Log unhandled exceptions in Flask for debugging
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        import sys
+        import traceback
+        from flask import g
+        tid = getattr(g, 'trace_id', '????????')
+        print(f">>> [{tid}] Flask unhandled exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
+        raise e  # Re-raise to let Flask handle the response
+
     # Mount Flask app at root with auth passing middleware
     oidc_app.mount("/", AuthAwareWSGIMiddleware(app))
 
