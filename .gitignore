@@ -177,7 +177,6 @@ flask_session/
 
 node_modules/
 .angular/
-mlflow_oidc_auth/ui
 pytest-coverage.txt
 
 web-react/coverage/
