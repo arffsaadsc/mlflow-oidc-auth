@@ -1,3 +1,5 @@
+import traceback
+
 from flask import Response, request
 from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
 from mlflow.protos.service_pb2 import CreateExperiment, DeleteScorer, RegisterScorer, SearchExperiments, SearchLoggedModels, SearchRuns
@@ -6,9 +8,12 @@ from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_model_name
+
+logger = get_logger()
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -90,46 +95,54 @@ def _filter_search_experiments(resp: Response):
     resp.data = message_to_json(response_message)
 
 def _filter_search_runs(resp: Response):
-    if get_fastapi_admin_status():
-        return
+    try:
+        if get_fastapi_admin_status():
+            return
 
-    response_message = SearchRuns.Response()  # type: ignore
-    parse_dict(resp.json, response_message)
-    request_message = _get_request_message(SearchRuns())
+        response_message = SearchRuns.Response()  # type: ignore
+        parse_dict(resp.json, response_message)
+        request_message = _get_request_message(SearchRuns())
 
-    username = get_fastapi_username()
+        username = get_fastapi_username()
+        logger.debug(f"_filter_search_runs: username={username}, runs_count={len(response_message.runs)}")
 
-    # Filter out unreadable runs from the current response page.
-    for run in list(response_message.runs):
-        if not can_read_experiment(run.info.experiment_id, username):
-            response_message.runs.remove(run)
+        # Filter out unreadable runs from the current response page.
+        for run in list(response_message.runs):
+            if not can_read_experiment(run.info.experiment_id, username):
+                response_message.runs.remove(run)
 
-    # Re-fetch to fill max_results, preserving MLflow pagination semantics.
-    tracking_store = _get_tracking_store()
-    while len(response_message.runs) < request_message.max_results and response_message.next_page_token:
-        refetched = tracking_store.search_runs(
-            experiment_ids=list(request_message.experiment_ids),
-            filter_string=request_message.filter,
-            run_view_type=request_message.run_view_type,
-            max_results=request_message.max_results,
-            order_by=list(request_message.order_by) if request_message.order_by else None,
-            page_token=response_message.next_page_token,
-        )
+        logger.debug(f"_filter_search_runs: after filtering, runs_count={len(response_message.runs)}")
 
-        remaining = request_message.max_results - len(response_message.runs)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
+        # Re-fetch to fill max_results, preserving MLflow pagination semantics.
+        tracking_store = _get_tracking_store()
+        while len(response_message.runs) < request_message.max_results and response_message.next_page_token:
+            refetched = tracking_store.search_runs(
+                experiment_ids=list(request_message.experiment_ids),
+                filter_string=request_message.filter,
+                run_view_type=request_message.run_view_type,
+                max_results=request_message.max_results,
+                order_by=list(request_message.order_by) if request_message.order_by else None,
+                page_token=response_message.next_page_token,
+            )
 
-        readable_proto = [r.to_proto() for r in refetched if can_read_experiment(r.info.experiment_id, username)]
-        response_message.runs.extend(readable_proto)
+            remaining = request_message.max_results - len(response_message.runs)
+            refetched = refetched[:remaining]
+            if len(refetched) == 0:
+                response_message.next_page_token = ""
+                break
 
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            readable_proto = [r.to_proto() for r in refetched if can_read_experiment(r.info.experiment_id, username)]
+            response_message.runs.extend(readable_proto)
 
-    resp.data = message_to_json(response_message)
+            start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+            final_offset = start_offset + len(refetched)
+            response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+
+        resp.data = message_to_json(response_message)
+    except Exception as e:
+        logger.error(f"_filter_search_runs error: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
 def _filter_search_registered_models(resp: Response):
     if get_fastapi_admin_status():

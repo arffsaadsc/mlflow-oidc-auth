@@ -30,9 +30,9 @@ def get_logger() -> logging.Logger:
         logger_name = os.environ.get("LOGGING_LOGGER_NAME", "uvicorn")
         _logger = logging.getLogger(logger_name)
 
-        # Set level from environment
-        log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
-        _logger.setLevel(getattr(logging, log_level, logging.INFO))
+        # Set level from environment (hardcoded to DEBUG for debugging)
+        log_level = os.environ.get("LOG_LEVEL", "DEBUG").upper()
+        _logger.setLevel(getattr(logging, log_level, logging.DEBUG))
 
         # Ensure propagation is enabled for testing frameworks
         _logger.propagate = True
