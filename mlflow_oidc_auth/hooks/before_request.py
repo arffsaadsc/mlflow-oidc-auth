@@ -1,4 +1,6 @@
 import re
+import sys
+import traceback
 from typing import Any, Callable, Dict, Optional
 
 from flask import Request, request
@@ -291,25 +293,40 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
 def before_request_hook():
     """Called before each request. If it did not return a response,
     the view function for the matched route is called and returns a response"""
+    print(f">>> before_request_hook: path={request.path}, method={request.method}", file=sys.stderr, flush=True)
 
     if _is_unprotected_route(request.path):
+        print(f">>> before_request_hook: unprotected route, skipping", file=sys.stderr, flush=True)
         return
 
     username, is_admin = _get_auth_context()
+    print(f">>> before_request_hook: username={username}, is_admin={is_admin}", file=sys.stderr, flush=True)
     if username is None:
+        print(f">>> before_request_hook: no username, returning 401", file=sys.stderr, flush=True)
         return responses.make_auth_required_response()
 
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     if is_admin:
+        print(f">>> before_request_hook: admin user, allowing", file=sys.stderr, flush=True)
         return
     # authorization
     if validator := _find_validator(request):
-        if not validator(username):
-            return responses.make_forbidden_response()
+        print(f">>> before_request_hook: found validator={validator.__name__}", file=sys.stderr, flush=True)
+        try:
+            result = validator(username)
+            print(f">>> before_request_hook: validator result={result}", file=sys.stderr, flush=True)
+            if not result:
+                print(f">>> before_request_hook: validator denied, returning 403", file=sys.stderr, flush=True)
+                return responses.make_forbidden_response()
+        except Exception as e:
+            print(f">>> before_request_hook: validator EXCEPTION: {e}", file=sys.stderr, flush=True)
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+            raise
     elif _is_proxy_artifact_path(request.path):
         if validator := _get_proxy_artifact_validator(request.method, request.view_args):
             if not validator(username):
                 return responses.make_forbidden_response()
+    print(f">>> before_request_hook: passing to MLflow handler", file=sys.stderr, flush=True)
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)
