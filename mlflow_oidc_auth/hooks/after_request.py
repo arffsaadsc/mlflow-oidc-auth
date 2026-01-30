@@ -1,3 +1,4 @@
+import sys
 import traceback
 
 from flask import Response, request
@@ -95,8 +96,10 @@ def _filter_search_experiments(resp: Response):
     resp.data = message_to_json(response_message)
 
 def _filter_search_runs(resp: Response):
+    print(">>> _filter_search_runs CALLED", file=sys.stderr, flush=True)
     try:
         if get_fastapi_admin_status():
+            print(">>> _filter_search_runs: admin user, skipping", file=sys.stderr, flush=True)
             return
 
         response_message = SearchRuns.Response()  # type: ignore
@@ -104,14 +107,14 @@ def _filter_search_runs(resp: Response):
         request_message = _get_request_message(SearchRuns())
 
         username = get_fastapi_username()
-        logger.debug(f"_filter_search_runs: username={username}, runs_count={len(response_message.runs)}")
+        print(f">>> _filter_search_runs: username={username}, runs={len(response_message.runs)}", file=sys.stderr, flush=True)
 
         # Filter out unreadable runs from the current response page.
         for run in list(response_message.runs):
             if not can_read_experiment(run.info.experiment_id, username):
                 response_message.runs.remove(run)
 
-        logger.debug(f"_filter_search_runs: after filtering, runs_count={len(response_message.runs)}")
+        print(f">>> _filter_search_runs: after filter runs={len(response_message.runs)}", file=sys.stderr, flush=True)
 
         # Re-fetch to fill max_results, preserving MLflow pagination semantics.
         tracking_store = _get_tracking_store()
@@ -139,9 +142,10 @@ def _filter_search_runs(resp: Response):
             response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
         resp.data = message_to_json(response_message)
+        print(">>> _filter_search_runs: SUCCESS", file=sys.stderr, flush=True)
     except Exception as e:
-        logger.error(f"_filter_search_runs error: {e}")
-        logger.error(traceback.format_exc())
+        print(f">>> _filter_search_runs ERROR: {e}", file=sys.stderr, flush=True)
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
         raise
 
 def _filter_search_registered_models(resp: Response):
@@ -306,9 +310,12 @@ AFTER_REQUEST_HANDLERS = {
 
 @catch_mlflow_exception
 def after_request_hook(resp: Response):
+    print(f">>> after_request_hook: path={request.path}, method={request.method}, status={resp.status_code}", file=sys.stderr, flush=True)
     if 400 <= resp.status_code < 600:
         return resp
 
-    if handler := AFTER_REQUEST_HANDLERS.get((request.path, request.method)):
+    handler = AFTER_REQUEST_HANDLERS.get((request.path, request.method))
+    print(f">>> after_request_hook: handler={handler}", file=sys.stderr, flush=True)
+    if handler:
         handler(resp)
     return resp
